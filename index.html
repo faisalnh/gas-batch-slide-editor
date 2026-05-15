@@ -1,333 +1,620 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<head>
-  <base target="_top">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    :root {
-      --maroon-dark: #6a000d;
-      --maroon-light: #a04149;
-      --off-white: #f8f8f8;
-      --grey-light: #e0e0e0;
-      --grey-dark: #333333;
-      --text-color: #212121;
-      --green: #34A853;
-      --red: #EA4335;
-    }
-
-    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
-
-    body {
-      font-family: 'Roboto', sans-serif;
-      background-color: var(--grey-dark);
-      margin: 0;
-      padding: 2rem 1rem;
-      display: flex;
-      justify-content: center;
-      align-items: flex-start;
-      min-height: 100vh;
-    }
-
-    .container {
-      width: 100%;
-      max-width: 700px;
-      background-color: var(--off-white);
-      border-radius: 12px;
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
-      padding: 2rem;
-      box-sizing: border-box;
-    }
-    
-    .header {
-      text-align: center;
-      border-bottom: 1px solid var(--grey-light);
-      padding-bottom: 1.5rem;
-      margin-bottom: 1.5rem;
-    }
-
-    .header img {
-      max-height: 80px;
-      margin-bottom: 1rem;
-    }
-
-    .header h1 {
-      margin: 0;
-      color: var(--maroon-dark);
-      font-weight: 700;
-    }
-    
-    #task-selector {
-      display: flex;
-      justify-content: center;
-      gap: 10px;
-      margin-bottom: 2rem;
-    }
-    
-    .task-btn {
-      padding: 10px 20px;
-      font-size: 1rem;
-      font-weight: 500;
-      cursor: pointer;
-      border: 2px solid var(--maroon-dark);
-      background-color: #fff;
-      color: var(--maroon-dark);
-      border-radius: 20px;
-      transition: all 0.3s ease;
-    }
-    
-    .task-btn:hover {
-      background-color: var(--maroon-light);
-      color: white;
-      border-color: var(--maroon-light);
-    }
-    
-    .task-btn.active {
-      background-color: var(--maroon-dark);
-      color: white;
-    }
-
-    .task-form { display: none; }
-    
-    .form-group { margin-bottom: 1.25rem; }
-    
-    label {
-      display: block;
-      margin-bottom: 0.5rem;
-      font-weight: 500;
-      color: var(--text-color);
-    }
-    
-    input[type="text"], input[type="number"] {
-      width: 100%;
-      padding: 12px;
-      border: 1px solid #ccc;
-      border-radius: 8px;
-      font-size: 1rem;
-      box-sizing: border-box;
-      transition: border-color 0.3s, box-shadow 0.3s;
-    }
-    input:focus {
-      outline: none;
-      border-color: var(--maroon-dark);
-      box-shadow: 0 0 0 3px rgba(106, 0, 13, 0.2);
-    }
-    
-    .run-button {
-      background-color: var(--maroon-dark);
-      color: white;
-      padding: 14px 20px;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 1.1rem;
-      font-weight: 500;
-      width: 100%;
-      margin-top: 1rem;
-      transition: background-color 0.3s;
-    }
-    .run-button:hover { background-color: var(--maroon-light); }
-    .run-button:disabled {
-      background-color: #9E9E9E;
-      cursor: not-allowed;
-    }
-
-    #results-area { display: none; margin-top: 2rem; }
-    #status-message {
-      padding: 1rem;
-      border-radius: 8px;
-      font-weight: 500;
-      text-align: center;
-      margin-bottom: 1rem;
-    }
-    #status-message.running { background-color: #e3f2fd; color: #1e88e5; }
-    #status-message.completed { background-color: #e8f5e9; color: var(--green); }
-    #status-message.error { background-color: #ffebec; color: var(--red); }
-    
-    #log-output {
-      font-family: 'Courier New', Courier, monospace;
-      white-space: pre-wrap;
-      word-wrap: break-word;
-      background: #2b2b2b;
-      color: #f8f8f2;
-      padding: 1rem;
-      border-radius: 8px;
-      max-height: 350px;
-      overflow-y: auto;
-      border: 1px solid #444;
-      font-size: 0.85rem;
-    }
-    .loader-container {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-    }
-    .dot-loader {
-      width: 12px; height: 12px;
-      border-radius: 50%;
-      background-color: var(--maroon-dark);
-      animation: dot-pulse 1.4s infinite ease-in-out;
-    }
-    .dot-loader:nth-child(2) { animation-delay: -0.16s; }
-    .dot-loader:nth-child(3) { animation-delay: -0.32s; }
-    @keyframes dot-pulse {
-      0%, 80%, 100% { transform: scale(0); }
-      40% { transform: scale(1.0); }
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <!-- IMPORTANT: Replace the src with the direct link to your hosted logo -->
-      <img src="https://mwslab.org/content/images/2025/02/M.A.D.-Lab-2-.png" alt="Millennia Logo">
-      <h1>Slide Deck Batch Editor</h1>
-    </div>
-
-    <div id="task-selector">
-      <button class="task-btn" onclick="showForm('delete-form', this)">Delete</button>
-      <button class="task-btn" onclick="showForm('insert-form', this)">Insert</button>
-      <button class="task-btn" onclick="showForm('replace-form', this)">Replace</button>
-    </div>
-    
-    <!-- FORMS -->
-    <div id="delete-form" class="task-form">
-      <div class="form-group"><label for="deleteFolderUrl">Folder URL</label><input type="text" id="deleteFolderUrl" placeholder="Paste Google Drive Folder URL"></div>
-      <div class="form-group"><label for="startSlide">Start Slide to Delete</label><input type="number" id="startSlide" min="1" value="35"></div>
-      <div class="form-group"><label for="endSlide">End Slide to Delete</label><input type="number" id="endSlide" min="1" value="35"></div>
-      <button class="run-button" onclick="runTask('startDeleteTask')">Run Deletion</button>
-    </div>
-    
-    <div id="insert-form" class="task-form">
-      <div class="form-group"><label for="insertSourceUrl">Source Presentation URL</label><input type="text" id="insertSourceUrl" placeholder="Presentation with the slide(s) to copy"></div>
-      <div class="form-group"><label for="insertSourceStart">Source Start Slide</label><input type="number" id="insertSourceStart" min="1" value="1"></div>
-      <div class="form-group"><label for="insertSourceEnd">Source End Slide</label><input type="number" id="insertSourceEnd" min="1" value="1"></div>
-      <div class="form-group"><label for="insertDestFolderUrl">Destination Folder URL</label><input type="text" id="insertDestFolderUrl" placeholder="Folder to modify"></div>
-      <div class="form-group"><label for="insertDestPosition">Destination Position (0 or blank to append)</label><input type="number" id="insertDestPosition" min="0" placeholder="Append to end"></div>
-      <button class="run-button" onclick="runTask('startInsertTask')">Run Insertion</button>
-    </div>
-    
-    <div id="replace-form" class="task-form">
-      <div class="form-group"><label for="replaceTargetFolderUrl">Target Folder URL (Files to update)</label><input type="text" id="replaceTargetFolderUrl" placeholder="Folder with presentations to be updated"></div>
-      <div class="form-group"><label for="replaceSourceFolderUrl">Source Folder URL (Files with new slide)</label><input type="text" id="replaceSourceFolderUrl" placeholder="Folder containing the replacement slides"></div>
-      <div class="form-group"><label for="replaceTargetSlideNum">Slide Number to Replace</label><input type="number" id="replaceTargetSlideNum" min="1" value="1"></div>
-      <div class="form-group"><label for="replaceSourceSlideNum">Slide Number to Copy</label><input type="number" id="replaceSourceSlideNum" min="1" value="1"></div>
-      <button class="run-button" onclick="runTask('startReplaceTask')">Run Replacement</button>
-    </div>
-    
-    <!-- RESULTS AREA -->
-    <div id="results-area">
-      <div id="status-message"></div>
-      <pre id="log-output"></pre>
-    </div>
-  </div>
-
-  <script>
-    let pollInterval = null;
-
-    document.addEventListener('DOMContentLoaded', () => {
-      showForm('delete-form', document.querySelector('.task-btn'));
-    });
-
-    function showForm(formId, buttonElement) {
-      document.querySelectorAll('.task-form').forEach(form => form.style.display = 'none');
-      document.querySelectorAll('.task-btn').forEach(btn => btn.classList.remove('active'));
-      document.getElementById(formId).style.display = 'block';
-      buttonElement.classList.add('active');
-      resetUI();
-    }
-    
-    function resetUI() {
-      clearInterval(pollInterval);
-      document.getElementById('results-area').style.display = 'none';
-      document.querySelectorAll('.run-button').forEach(btn => btn.disabled = false);
-    }
-
-    function getFormData(taskType) {
-      if (taskType === 'startDeleteTask') {
-        return {
-          deleteFolderUrl: document.getElementById('deleteFolderUrl').value,
-          startSlide: document.getElementById('startSlide').value,
-          endSlide: document.getElementById('endSlide').value,
-        };
-      }
-      if (taskType === 'startInsertTask') {
-        return {
-          insertSourceUrl: document.getElementById('insertSourceUrl').value,
-          insertSourceStart: document.getElementById('insertSourceStart').value,
-          insertSourceEnd: document.getElementById('insertSourceEnd').value,
-          insertDestFolderUrl: document.getElementById('insertDestFolderUrl').value,
-          insertDestPosition: document.getElementById('insertDestPosition').value,
-        };
-      }
-      if (taskType === 'startReplaceTask') {
-        return {
-          replaceTargetFolderUrl: document.getElementById('replaceTargetFolderUrl').value,
-          replaceSourceFolderUrl: document.getElementById('replaceSourceFolderUrl').value,
-          replaceTargetSlideNum: document.getElementById('replaceTargetSlideNum').value,
-          replaceSourceSlideNum: document.getElementById('replaceSourceSlideNum').value,
-        };
-      }
-    }
-
-    function runTask(taskFunction) {
-      const formData = getFormData(taskFunction);
-      if (Object.values(formData).some(val => !val && val !== 0)) {
-         if (!confirm("One or more fields are empty. Continue anyway?")) {
-           return;
-         }
-      }
-
-      setUILoading();
-      
-      google.script.run
-        .withSuccessHandler(response => {
-          if (response.jobId) {
-            pollForLogs(response.jobId);
-          } else {
-            handleFinalState({ status: 'error', log: 'Failed to start job. No Job ID returned.' });
-          }
-        })
-        .withFailureHandler(error => {
-          handleFinalState({ status: 'error', log: 'An unexpected script error occurred: ' + error.message });
-        })
-        [taskFunction](formData);
-    }
-
-    function setUILoading() {
-      document.querySelectorAll('.run-button').forEach(btn => btn.disabled = true);
-      const resultsArea = document.getElementById('results-area');
-      const statusMessage = document.getElementById('status-message');
-      const logOutput = document.getElementById('log-output');
-
-      statusMessage.className = 'running';
-      statusMessage.innerHTML = `<div class="loader-container"><span>Processing...</span><div class="dot-loader"></div><div class="dot-loader"></div><div class="dot-loader"></div></div>`;
-      logOutput.textContent = 'Waiting for process to start...';
-      resultsArea.style.display = 'block';
-    }
-
-    function pollForLogs(jobId) {
-      pollInterval = setInterval(() => {
-        google.script.run
-          .withSuccessHandler(response => {
-            const logOutput = document.getElementById('log-output');
-            logOutput.textContent = response.log;
-
-            if (response.status === 'completed' || response.status === 'error') {
-              handleFinalState(response);
+    <head>
+        <base target="_top" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <style>
+            :root {
+                --maroon-dark: #6a000d;
+                --maroon-light: #a04149;
+                --off-white: #f8f8f8;
+                --grey-light: #e0e0e0;
+                --grey-dark: #333333;
+                --text-color: #212121;
+                --green: #34a853;
+                --red: #ea4335;
             }
-          })
-          .getLogUpdates(jobId);
-      }, 1500);
-    }
 
-    function handleFinalState(response) {
-      clearInterval(pollInterval);
-      const statusMessage = document.getElementById('status-message');
-      statusMessage.className = response.status;
-      statusMessage.textContent = response.status.charAt(0).toUpperCase() + response.status.slice(1);
-      document.querySelectorAll('.run-button').forEach(btn => btn.disabled = false);
-    }
-  </script>
-</body>
+            @import url("https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap");
+
+            body {
+                font-family: "Roboto", sans-serif;
+                background-color: var(--grey-dark);
+                margin: 0;
+                padding: 2rem 1rem;
+                display: flex;
+                justify-content: center;
+                align-items: flex-start;
+                min-height: 100vh;
+            }
+
+            .container {
+                width: 100%;
+                max-width: 700px;
+                background-color: var(--off-white);
+                border-radius: 12px;
+                box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+                padding: 2rem;
+                box-sizing: border-box;
+            }
+
+            .header {
+                text-align: center;
+                border-bottom: 1px solid var(--grey-light);
+                padding-bottom: 1.5rem;
+                margin-bottom: 1.5rem;
+            }
+
+            .header img {
+                max-height: 80px;
+                margin-bottom: 1rem;
+            }
+
+            .header h1 {
+                margin: 0;
+                color: var(--maroon-dark);
+                font-weight: 700;
+            }
+
+            #task-selector {
+                display: flex;
+                justify-content: center;
+                gap: 10px;
+                margin-bottom: 2rem;
+            }
+
+            .task-btn {
+                padding: 10px 20px;
+                font-size: 1rem;
+                font-weight: 500;
+                cursor: pointer;
+                border: 2px solid var(--maroon-dark);
+                background-color: #fff;
+                color: var(--maroon-dark);
+                border-radius: 20px;
+                transition: all 0.3s ease;
+            }
+
+            .task-btn:hover {
+                background-color: var(--maroon-light);
+                color: white;
+                border-color: var(--maroon-light);
+            }
+
+            .task-btn.active {
+                background-color: var(--maroon-dark);
+                color: white;
+            }
+
+            .task-form {
+                display: none;
+            }
+
+            .form-group {
+                margin-bottom: 1.25rem;
+            }
+
+            label {
+                display: block;
+                margin-bottom: 0.5rem;
+                font-weight: 500;
+                color: var(--text-color);
+            }
+
+            input[type="text"],
+            input[type="number"],
+            select {
+                width: 100%;
+                padding: 12px;
+                border: 1px solid #ccc;
+                border-radius: 8px;
+                font-size: 1rem;
+                box-sizing: border-box;
+                transition:
+                    border-color 0.3s,
+                    box-shadow 0.3s;
+            }
+            input:focus {
+                outline: none;
+                border-color: var(--maroon-dark);
+                box-shadow: 0 0 0 3px rgba(106, 0, 13, 0.2);
+            }
+
+            .run-button {
+                background-color: var(--maroon-dark);
+                color: white;
+                padding: 14px 20px;
+                border: none;
+                border-radius: 8px;
+                cursor: pointer;
+                font-size: 1.1rem;
+                font-weight: 500;
+                width: 100%;
+                margin-top: 1rem;
+                transition: background-color 0.3s;
+            }
+            .run-button:hover {
+                background-color: var(--maroon-light);
+            }
+            .run-button:disabled {
+                background-color: #9e9e9e;
+                cursor: not-allowed;
+            }
+
+            #results-area {
+                display: none;
+                margin-top: 2rem;
+            }
+            #status-message {
+                padding: 1rem;
+                border-radius: 8px;
+                font-weight: 500;
+                text-align: center;
+                margin-bottom: 1rem;
+            }
+            #status-message.running {
+                background-color: #e3f2fd;
+                color: #1e88e5;
+            }
+            #status-message.completed {
+                background-color: #e8f5e9;
+                color: var(--green);
+            }
+            #status-message.error {
+                background-color: #ffebec;
+                color: var(--red);
+            }
+
+            #log-output {
+                font-family: "Courier New", Courier, monospace;
+                white-space: pre-wrap;
+                word-wrap: break-word;
+                background: #2b2b2b;
+                color: #f8f8f2;
+                padding: 1rem;
+                border-radius: 8px;
+                max-height: 350px;
+                overflow-y: auto;
+                border: 1px solid #444;
+                font-size: 0.85rem;
+            }
+            .loader-container {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 10px;
+            }
+            .dot-loader {
+                width: 12px;
+                height: 12px;
+                border-radius: 50%;
+                background-color: var(--maroon-dark);
+                animation: dot-pulse 1.4s infinite ease-in-out;
+            }
+            .dot-loader:nth-child(2) {
+                animation-delay: -0.16s;
+            }
+            .dot-loader:nth-child(3) {
+                animation-delay: -0.32s;
+            }
+            @keyframes dot-pulse {
+                0%,
+                80%,
+                100% {
+                    transform: scale(0);
+                }
+                40% {
+                    transform: scale(1);
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <!-- IMPORTANT: Replace the src with the direct link to your hosted logo -->
+                <img
+                    src="https://mwslab.org/content/images/2025/02/M.A.D.-Lab-2-.png"
+                    alt="Millennia Logo"
+                />
+                <h1>Slide Deck Batch Editor</h1>
+            </div>
+
+            <div id="task-selector">
+                <button
+                    class="task-btn"
+                    onclick="showForm('delete-form', this)"
+                >
+                    Delete
+                </button>
+                <button
+                    class="task-btn"
+                    onclick="showForm('insert-form', this)"
+                >
+                    Insert
+                </button>
+                <button
+                    class="task-btn"
+                    onclick="showForm('replace-form', this)"
+                >
+                    Replace
+                </button>
+                <button
+                    class="task-btn"
+                    onclick="showForm('text-replace-form', this)"
+                >
+                    Text Replace
+                </button>
+            </div>
+
+            <!-- FORMS -->
+            <div id="delete-form" class="task-form">
+                <div class="form-group">
+                    <label for="deleteFolderUrl">Folder URL</label
+                    ><input
+                        type="text"
+                        id="deleteFolderUrl"
+                        placeholder="Paste Google Drive Folder URL"
+                    />
+                </div>
+                <div class="form-group">
+                    <label for="startSlide">Start Slide to Delete</label
+                    ><input type="number" id="startSlide" min="1" value="35" />
+                </div>
+                <div class="form-group">
+                    <label for="endSlide">End Slide to Delete</label
+                    ><input type="number" id="endSlide" min="1" value="35" />
+                </div>
+                <button class="run-button" onclick="runTask('startDeleteTask')">
+                    Run Deletion
+                </button>
+            </div>
+
+            <div id="insert-form" class="task-form">
+                <div class="form-group">
+                    <label for="insertSourceUrl">Source Presentation URL</label
+                    ><input
+                        type="text"
+                        id="insertSourceUrl"
+                        placeholder="Presentation with the slide(s) to copy"
+                    />
+                </div>
+                <div class="form-group">
+                    <label for="insertSourceStart">Source Start Slide</label
+                    ><input
+                        type="number"
+                        id="insertSourceStart"
+                        min="1"
+                        value="1"
+                    />
+                </div>
+                <div class="form-group">
+                    <label for="insertSourceEnd">Source End Slide</label
+                    ><input
+                        type="number"
+                        id="insertSourceEnd"
+                        min="1"
+                        value="1"
+                    />
+                </div>
+                <div class="form-group">
+                    <label for="insertDestFolderUrl"
+                        >Destination Folder URL</label
+                    ><input
+                        type="text"
+                        id="insertDestFolderUrl"
+                        placeholder="Folder to modify"
+                    />
+                </div>
+                <div class="form-group">
+                    <label for="insertDestPosition"
+                        >Destination Position (0 or blank to append)</label
+                    ><input
+                        type="number"
+                        id="insertDestPosition"
+                        min="0"
+                        placeholder="Append to end"
+                    />
+                </div>
+                <button class="run-button" onclick="runTask('startInsertTask')">
+                    Run Insertion
+                </button>
+            </div>
+
+            <div id="replace-form" class="task-form">
+                <div class="form-group">
+                    <label for="replaceTargetFolderUrl"
+                        >Target Folder URL (Files to update)</label
+                    ><input
+                        type="text"
+                        id="replaceTargetFolderUrl"
+                        placeholder="Folder with presentations to be updated"
+                    />
+                </div>
+                <div class="form-group">
+                    <label for="replaceSourceFolderUrl"
+                        >Source Folder URL (Files with new slide)</label
+                    ><input
+                        type="text"
+                        id="replaceSourceFolderUrl"
+                        placeholder="Folder containing the replacement slides"
+                    />
+                </div>
+                <div class="form-group">
+                    <label for="replaceTargetSlideNum"
+                        >Slide Number to Replace</label
+                    ><input
+                        type="number"
+                        id="replaceTargetSlideNum"
+                        min="1"
+                        value="1"
+                    />
+                </div>
+                <div class="form-group">
+                    <label for="replaceSourceSlideNum"
+                        >Slide Number to Copy</label
+                    ><input
+                        type="number"
+                        id="replaceSourceSlideNum"
+                        min="1"
+                        value="1"
+                    />
+                </div>
+                <button
+                    class="run-button"
+                    onclick="runTask('startReplaceTask')"
+                >
+                    Run Replacement
+                </button>
+            </div>
+
+            <div id="text-replace-form" class="task-form">
+                <div class="form-group">
+                    <label for="textReplaceFolderUrl">Target Folder URL</label
+                    ><input
+                        type="text"
+                        id="textReplaceFolderUrl"
+                        placeholder="Folder with presentations to update"
+                    />
+                </div>
+                <div class="form-group">
+                    <label for="findText">Find Text</label
+                    ><input
+                        type="text"
+                        id="findText"
+                        placeholder="Text to search for"
+                    />
+                </div>
+                <div class="form-group">
+                    <label for="replaceWithText">Replace With</label
+                    ><input
+                        type="text"
+                        id="replaceWithText"
+                        placeholder="Replacement text"
+                    />
+                </div>
+                <div class="form-group">
+                    <label for="textReplaceScope">Apply To</label>
+                    <select
+                        id="textReplaceScope"
+                        onchange="toggleTextReplaceSlideNumber()"
+                    >
+                        <option value="all">All slides</option>
+                        <option value="specific">Specific slide</option>
+                    </select>
+                </div>
+                <div
+                    class="form-group"
+                    id="textReplaceSlideNumberGroup"
+                    style="display: none"
+                >
+                    <label for="textReplaceSlideNumber">Slide Number</label
+                    ><input
+                        type="number"
+                        id="textReplaceSlideNumber"
+                        min="1"
+                        value="1"
+                    />
+                </div>
+                <div class="form-group">
+                    <label
+                        ><input type="checkbox" id="matchCase" /> Match
+                        case</label
+                    >
+                </div>
+                <button
+                    class="run-button"
+                    onclick="runTask('startTextReplaceTask')"
+                >
+                    Run Text Replacement
+                </button>
+            </div>
+
+            <!-- RESULTS AREA -->
+            <div id="results-area">
+                <div id="status-message"></div>
+                <pre id="log-output"></pre>
+            </div>
+        </div>
+
+        <script>
+            let pollInterval = null;
+
+            document.addEventListener("DOMContentLoaded", () => {
+                showForm("delete-form", document.querySelector(".task-btn"));
+            });
+
+            function showForm(formId, buttonElement) {
+                document
+                    .querySelectorAll(".task-form")
+                    .forEach((form) => (form.style.display = "none"));
+                document
+                    .querySelectorAll(".task-btn")
+                    .forEach((btn) => btn.classList.remove("active"));
+                document.getElementById(formId).style.display = "block";
+                buttonElement.classList.add("active");
+                resetUI();
+            }
+
+            function resetUI() {
+                clearInterval(pollInterval);
+                document.getElementById("results-area").style.display = "none";
+                document
+                    .querySelectorAll(".run-button")
+                    .forEach((btn) => (btn.disabled = false));
+            }
+
+            function getFormData(taskType) {
+                if (taskType === "startDeleteTask") {
+                    return {
+                        deleteFolderUrl:
+                            document.getElementById("deleteFolderUrl").value,
+                        startSlide: document.getElementById("startSlide").value,
+                        endSlide: document.getElementById("endSlide").value,
+                    };
+                }
+                if (taskType === "startInsertTask") {
+                    return {
+                        insertSourceUrl:
+                            document.getElementById("insertSourceUrl").value,
+                        insertSourceStart:
+                            document.getElementById("insertSourceStart").value,
+                        insertSourceEnd:
+                            document.getElementById("insertSourceEnd").value,
+                        insertDestFolderUrl: document.getElementById(
+                            "insertDestFolderUrl",
+                        ).value,
+                        insertDestPosition:
+                            document.getElementById("insertDestPosition").value,
+                    };
+                }
+                if (taskType === "startReplaceTask") {
+                    return {
+                        replaceTargetFolderUrl: document.getElementById(
+                            "replaceTargetFolderUrl",
+                        ).value,
+                        replaceSourceFolderUrl: document.getElementById(
+                            "replaceSourceFolderUrl",
+                        ).value,
+                        replaceTargetSlideNum: document.getElementById(
+                            "replaceTargetSlideNum",
+                        ).value,
+                        replaceSourceSlideNum: document.getElementById(
+                            "replaceSourceSlideNum",
+                        ).value,
+                    };
+                }
+                if (taskType === "startTextReplaceTask") {
+                    return {
+                        textReplaceFolderUrl: document.getElementById(
+                            "textReplaceFolderUrl",
+                        ).value,
+                        findText: document.getElementById("findText").value,
+                        replaceWithText:
+                            document.getElementById("replaceWithText").value,
+                        textReplaceScope:
+                            document.getElementById("textReplaceScope").value,
+                        textReplaceSlideNumber: document.getElementById(
+                            "textReplaceSlideNumber",
+                        ).value,
+                        matchCase: document.getElementById("matchCase").checked,
+                    };
+                }
+            }
+
+            function toggleTextReplaceSlideNumber() {
+                const scope = document.getElementById("textReplaceScope").value;
+                const group = document.getElementById(
+                    "textReplaceSlideNumberGroup",
+                );
+                group.style.display = scope === "specific" ? "block" : "none";
+            }
+
+            function runTask(taskFunction) {
+                const formData = getFormData(taskFunction);
+                if (
+                    Object.values(formData).some(
+                        (val) =>
+                            val === "" || val === null || val === undefined,
+                    )
+                ) {
+                    if (
+                        !confirm(
+                            "One or more fields are empty. Continue anyway?",
+                        )
+                    ) {
+                        return;
+                    }
+                }
+
+                setUILoading();
+
+                google.script.run
+                    .withSuccessHandler((response) => {
+                        if (response.jobId) {
+                            pollForLogs(response.jobId);
+                        } else {
+                            handleFinalState({
+                                status: "error",
+                                log: "Failed to start job. No Job ID returned.",
+                            });
+                        }
+                    })
+                    .withFailureHandler((error) => {
+                        handleFinalState({
+                            status: "error",
+                            log:
+                                "An unexpected script error occurred: " +
+                                error.message,
+                        });
+                    })
+                    [taskFunction](formData);
+            }
+
+            function setUILoading() {
+                document
+                    .querySelectorAll(".run-button")
+                    .forEach((btn) => (btn.disabled = true));
+                const resultsArea = document.getElementById("results-area");
+                const statusMessage = document.getElementById("status-message");
+                const logOutput = document.getElementById("log-output");
+
+                statusMessage.className = "running";
+                statusMessage.innerHTML = `<div class="loader-container"><span>Processing...</span><div class="dot-loader"></div><div class="dot-loader"></div><div class="dot-loader"></div></div>`;
+                logOutput.textContent = "Waiting for process to start...";
+                resultsArea.style.display = "block";
+            }
+
+            function pollForLogs(jobId) {
+                pollInterval = setInterval(() => {
+                    google.script.run
+                        .withSuccessHandler((response) => {
+                            const logOutput =
+                                document.getElementById("log-output");
+                            logOutput.textContent = response.log;
+
+                            if (
+                                response.status === "completed" ||
+                                response.status === "error"
+                            ) {
+                                handleFinalState(response);
+                            }
+                        })
+                        .getLogUpdates(jobId);
+                }, 1500);
+            }
+
+            function handleFinalState(response) {
+                clearInterval(pollInterval);
+                const statusMessage = document.getElementById("status-message");
+                statusMessage.className = response.status;
+                statusMessage.textContent =
+                    response.status.charAt(0).toUpperCase() +
+                    response.status.slice(1);
+                document
+                    .querySelectorAll(".run-button")
+                    .forEach((btn) => (btn.disabled = false));
+            }
+        </script>
+    </body>
 </html>
