@@ -16,16 +16,53 @@ function extractIdFromUrl(url) {
   return match ? match[0] : url;
 }
 
-// --- CACHE & LOGGING ---
+// --- CACHE, LOGGING & SUMMARY ---
 const CACHE_EXPIRATION_SECONDS = 600; // 10 minutes
 
-function updateLog(jobId, message, status) {
-  const cache = CacheService.getScriptCache();
-  const currentLog =
-    cache.get(jobId) || JSON.stringify({ log: "", status: "running" });
-  const logObject = JSON.parse(currentLog);
+function getDefaultJobState() {
+  return {
+    log: "",
+    status: "running",
+    summary: {
+      processedFiles: 0,
+      editedFiles: 0,
+      skippedFiles: 0,
+      errorFiles: 0,
+      totalChanges: 0,
+      currentFile: "",
+      message: "Preparing job...",
+      errors: [],
+    },
+  };
+}
 
-  // Prepend new messages so the latest is always at the top
+function getJobState(jobId) {
+  const cache = CacheService.getScriptCache();
+  const currentLog = cache.get(jobId);
+  if (!currentLog) return getDefaultJobState();
+
+  const logObject = JSON.parse(currentLog);
+  const defaultState = getDefaultJobState();
+  logObject.summary = Object.assign(
+    {},
+    defaultState.summary,
+    logObject.summary || {},
+  );
+  return logObject;
+}
+
+function saveJobState(jobId, jobState) {
+  CacheService.getScriptCache().put(
+    jobId,
+    JSON.stringify(jobState),
+    CACHE_EXPIRATION_SECONDS,
+  );
+}
+
+function updateLog(jobId, message, status) {
+  const logObject = getJobState(jobId);
+
+  // Keep logs internally for debugging, but the UI displays the summary only.
   const timestamp = new Date().toLocaleTimeString();
   logObject.log = `[${timestamp}] ${message}\n` + logObject.log;
 
@@ -33,18 +70,48 @@ function updateLog(jobId, message, status) {
     logObject.status = status;
   }
 
-  cache.put(jobId, JSON.stringify(logObject), CACHE_EXPIRATION_SECONDS);
+  saveJobState(jobId, logObject);
+}
+
+function updateJobSummary(jobId, summaryUpdates, status) {
+  const logObject = getJobState(jobId);
+  logObject.summary = Object.assign({}, logObject.summary, summaryUpdates);
+
+  if (status) {
+    logObject.status = status;
+  }
+
+  saveJobState(jobId, logObject);
+}
+
+function finishJob(jobId, summary) {
+  const finalStatus = summary.errorFiles > 0 ? "error" : "completed";
+  const message =
+    summary.errorFiles > 0
+      ? "Completed with errors. Review the error summary below."
+      : "Process finished successfully.";
+
+  updateJobSummary(jobId, Object.assign({}, summary, { message }), finalStatus);
+  updateLog(jobId, message, finalStatus);
 }
 
 /**
- * Client-side poller function. Retrieves the latest log for a given job ID.
+ * Client-side poller function. Retrieves the latest summary for a given job ID.
  */
 function getLogUpdates(jobId) {
   const cache = CacheService.getScriptCache();
   const logData = cache.get(jobId);
   return logData
     ? JSON.parse(logData)
-    : { status: "error", log: "Job ID not found or expired." };
+    : {
+        status: "error",
+        log: "Job ID not found or expired.",
+        summary: Object.assign({}, getDefaultJobState().summary, {
+          message: "Job ID not found or expired.",
+          errorFiles: 1,
+          errors: ["Job ID not found or expired."],
+        }),
+      };
 }
 
 // --- TASK STARTER FUNCTIONS ---
@@ -53,8 +120,7 @@ function getLogUpdates(jobId) {
 function startDeleteTask(formData) {
   const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   updateLog(jobId, "Job initiated: Delete Slides");
-
-  // We call the main function. The client will poll for updates using the jobId.
+  updateJobSummary(jobId, { message: "Deleting slides..." });
   deleteSlidesInFolder(jobId, formData);
 
   return { jobId: jobId };
@@ -63,6 +129,7 @@ function startDeleteTask(formData) {
 function startInsertTask(formData) {
   const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   updateLog(jobId, "Job initiated: Insert Slides");
+  updateJobSummary(jobId, { message: "Inserting slides..." });
   insertSlideFromSourceIntoAllPresentations(jobId, formData);
   return { jobId: jobId };
 }
@@ -70,6 +137,7 @@ function startInsertTask(formData) {
 function startReplaceTask(formData) {
   const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   updateLog(jobId, "Job initiated: Replace Slides");
+  updateJobSummary(jobId, { message: "Replacing slides..." });
   replaceSlideInBatch(jobId, formData);
   return { jobId: jobId };
 }
@@ -77,20 +145,25 @@ function startReplaceTask(formData) {
 function startTextReplaceTask(formData) {
   const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   updateLog(jobId, "Job initiated: Text Replace");
+  updateJobSummary(jobId, { message: "Replacing text..." });
   replaceTextInFolder(jobId, formData);
   return { jobId: jobId };
 }
 
-// --- CORE LOGIC FUNCTIONS (Refactored for Real-Time Logging) ---
+// --- CORE LOGIC FUNCTIONS ---
 
 function deleteSlidesInFolder(jobId, formData) {
+  const summary = getDefaultJobState().summary;
+  summary.message = "Deleting slides...";
+
   try {
     const folderId = extractIdFromUrl(formData.deleteFolderUrl);
     const startSlide = parseInt(formData.startSlide, 10);
     const endSlide = parseInt(formData.endSlide, 10);
 
-    if (!folderId || isNaN(startSlide) || isNaN(endSlide))
+    if (!folderId || isNaN(startSlide) || isNaN(endSlide)) {
       throw new Error("Invalid input.");
+    }
 
     const folder = DriveApp.getFolderById(folderId);
     const files = folder.getFilesByType(MimeType.GOOGLE_SLIDES);
@@ -98,34 +171,63 @@ function deleteSlidesInFolder(jobId, formData) {
 
     while (files.hasNext()) {
       const file = files.next();
-      const presentation = SlidesApp.openById(file.getId());
-      const slides = presentation.getSlides();
-      const totalSlides = slides.length;
-      updateLog(
-        jobId,
-        `Processing file: ${file.getName()} (${totalSlides} slides).`,
-      );
+      summary.processedFiles++;
+      summary.currentFile = file.getName();
 
-      if (totalSlides < startSlide) {
-        updateLog(jobId, `  - Skipping: Not enough slides.`);
-        continue;
-      }
+      try {
+        const presentation = SlidesApp.openById(file.getId());
+        const slides = presentation.getSlides();
+        const totalSlides = slides.length;
+        let deletedCount = 0;
 
-      for (let i = endSlide - 1; i >= startSlide - 1; i--) {
-        if (i < totalSlides) {
-          slides[i].remove();
-          updateLog(jobId, `  - Deleted slide ${i + 1}.`);
-          Utilities.sleep(100); // Small delay to allow logs to feel more real-time and prevent overwhelming APIs
+        if (totalSlides < startSlide) {
+          summary.skippedFiles++;
+          updateLog(jobId, `Skipped ${file.getName()}: not enough slides.`);
+          updateJobSummary(jobId, summary);
+          continue;
         }
+
+        for (let i = endSlide - 1; i >= startSlide - 1; i--) {
+          if (i < totalSlides) {
+            slides[i].remove();
+            deletedCount++;
+          }
+        }
+
+        if (deletedCount > 0) {
+          summary.editedFiles++;
+          summary.totalChanges += deletedCount;
+        } else {
+          summary.skippedFiles++;
+        }
+
+        updateJobSummary(jobId, summary);
+        Utilities.sleep(100);
+      } catch (fileError) {
+        summary.errorFiles++;
+        summary.errors.push(`${file.getName()}: ${fileError.message}`);
+        updateLog(jobId, `ERROR in ${file.getName()}: ${fileError.message}`);
+        updateJobSummary(jobId, summary);
       }
     }
-    updateLog(jobId, "Process finished successfully.", "completed");
+
+    finishJob(jobId, summary);
   } catch (e) {
+    summary.errorFiles++;
+    summary.errors.push(e.message);
+    updateJobSummary(
+      jobId,
+      Object.assign({}, summary, { message: `ERROR: ${e.message}` }),
+      "error",
+    );
     updateLog(jobId, `ERROR: ${e.message}`, "error");
   }
 }
 
 function insertSlideFromSourceIntoAllPresentations(jobId, formData) {
+  const summary = getDefaultJobState().summary;
+  summary.message = "Inserting slides...";
+
   try {
     const sourcePresentationId = extractIdFromUrl(formData.insertSourceUrl);
     const destinationFolderId = extractIdFromUrl(formData.insertDestFolderUrl);
@@ -139,13 +241,15 @@ function insertSlideFromSourceIntoAllPresentations(jobId, formData) {
       !destinationFolderId ||
       isNaN(sourceSlideStartIndex) ||
       isNaN(sourceSlideEndIndex)
-    )
+    ) {
       throw new Error("Invalid input.");
+    }
 
     const sourcePresentation = SlidesApp.openById(sourcePresentationId);
     const sourceSlides = sourcePresentation.getSlides();
     const folder = DriveApp.getFolderById(destinationFolderId);
     const files = folder.getFilesByType(MimeType.GOOGLE_SLIDES);
+    const slideCountToInsert = sourceSlideEndIndex - sourceSlideStartIndex + 1;
 
     updateLog(
       jobId,
@@ -154,38 +258,61 @@ function insertSlideFromSourceIntoAllPresentations(jobId, formData) {
 
     while (files.hasNext()) {
       const file = files.next();
-      const destPpt = SlidesApp.openById(file.getId());
-      updateLog(jobId, `Processing file: ${file.getName()}`);
+      summary.processedFiles++;
+      summary.currentFile = file.getName();
 
-      if (destinationSlideIndex > 0) {
-        let insertionIndex = destinationSlideIndex - 1;
-        for (
-          let i = sourceSlideStartIndex - 1;
-          i <= sourceSlideEndIndex - 1;
-          i++
-        ) {
-          destPpt.insertSlide(insertionIndex, sourceSlides[i]);
-          insertionIndex++;
+      try {
+        const destPpt = SlidesApp.openById(file.getId());
+
+        if (destinationSlideIndex > 0) {
+          let insertionIndex = destinationSlideIndex - 1;
+          for (
+            let i = sourceSlideStartIndex - 1;
+            i <= sourceSlideEndIndex - 1;
+            i++
+          ) {
+            destPpt.insertSlide(insertionIndex, sourceSlides[i]);
+            insertionIndex++;
+          }
+        } else {
+          for (
+            let i = sourceSlideStartIndex - 1;
+            i <= sourceSlideEndIndex - 1;
+            i++
+          ) {
+            destPpt.appendSlide(sourceSlides[i]);
+          }
         }
-      } else {
-        for (
-          let i = sourceSlideStartIndex - 1;
-          i <= sourceSlideEndIndex - 1;
-          i++
-        ) {
-          destPpt.appendSlide(sourceSlides[i]);
-        }
+
+        summary.editedFiles++;
+        summary.totalChanges += slideCountToInsert;
+        updateJobSummary(jobId, summary);
+        Utilities.sleep(100);
+      } catch (fileError) {
+        summary.errorFiles++;
+        summary.errors.push(`${file.getName()}: ${fileError.message}`);
+        updateLog(jobId, `ERROR in ${file.getName()}: ${fileError.message}`);
+        updateJobSummary(jobId, summary);
       }
-      updateLog(jobId, `  - Inserted slides into ${file.getName()}`);
-      Utilities.sleep(100);
     }
-    updateLog(jobId, "Process finished successfully.", "completed");
+
+    finishJob(jobId, summary);
   } catch (e) {
+    summary.errorFiles++;
+    summary.errors.push(e.message);
+    updateJobSummary(
+      jobId,
+      Object.assign({}, summary, { message: `ERROR: ${e.message}` }),
+      "error",
+    );
     updateLog(jobId, `ERROR: ${e.message}`, "error");
   }
 }
 
 function replaceTextInFolder(jobId, formData) {
+  const summary = getDefaultJobState().summary;
+  summary.message = "Replacing text...";
+
   try {
     const folderId = extractIdFromUrl(formData.textReplaceFolderUrl);
     const findText = formData.findText;
@@ -212,67 +339,73 @@ function replaceTextInFolder(jobId, formData) {
       jobId,
       `Starting text replacement in folder: ${folder.getName()}`,
     );
-    updateLog(jobId, `Replacing "${findText}" with "${replaceWithText}"`);
 
     while (files.hasNext()) {
       const file = files.next();
-      const presentation = SlidesApp.openById(file.getId());
-      const slides = presentation.getSlides();
-      let replacementCount = 0;
+      summary.processedFiles++;
+      summary.currentFile = file.getName();
 
-      updateLog(
-        jobId,
-        `Processing file: ${file.getName()} (${slides.length} slides).`,
-      );
+      try {
+        const presentation = SlidesApp.openById(file.getId());
+        const slides = presentation.getSlides();
+        let replacementCount = 0;
 
-      if (scope === "specific") {
-        if (slideNumber < 1 || slideNumber > slides.length) {
-          updateLog(jobId, `  - SKIPPED: Slide ${slideNumber} does not exist.`);
-          continue;
-        }
+        if (scope === "specific") {
+          if (slideNumber < 1 || slideNumber > slides.length) {
+            summary.skippedFiles++;
+            updateJobSummary(jobId, summary);
+            continue;
+          }
 
-        replacementCount += slides[slideNumber - 1].replaceAllText(
-          findText,
-          replaceWithText,
-          matchCase,
-        );
-        updateLog(
-          jobId,
-          `  - Replaced ${replacementCount} occurrence(s) on slide ${slideNumber}.`,
-        );
-      } else {
-        for (let i = 0; i < slides.length; i++) {
-          const count = slides[i].replaceAllText(
+          replacementCount += slides[slideNumber - 1].replaceAllText(
             findText,
             replaceWithText,
             matchCase,
           );
-          replacementCount += count;
-
-          if (count > 0) {
-            updateLog(
-              jobId,
-              `  - Slide ${i + 1}: replaced ${count} occurrence(s).`,
+        } else {
+          for (let i = 0; i < slides.length; i++) {
+            replacementCount += slides[i].replaceAllText(
+              findText,
+              replaceWithText,
+              matchCase,
             );
           }
         }
 
-        updateLog(
-          jobId,
-          `  - Total replacements in file: ${replacementCount}.`,
-        );
-      }
+        if (replacementCount > 0) {
+          summary.editedFiles++;
+          summary.totalChanges += replacementCount;
+        } else {
+          summary.skippedFiles++;
+        }
 
-      Utilities.sleep(100);
+        updateJobSummary(jobId, summary);
+        Utilities.sleep(100);
+      } catch (fileError) {
+        summary.errorFiles++;
+        summary.errors.push(`${file.getName()}: ${fileError.message}`);
+        updateLog(jobId, `ERROR in ${file.getName()}: ${fileError.message}`);
+        updateJobSummary(jobId, summary);
+      }
     }
 
-    updateLog(jobId, "Text replacement finished successfully.", "completed");
+    finishJob(jobId, summary);
   } catch (e) {
+    summary.errorFiles++;
+    summary.errors.push(e.message);
+    updateJobSummary(
+      jobId,
+      Object.assign({}, summary, { message: `ERROR: ${e.message}` }),
+      "error",
+    );
     updateLog(jobId, `ERROR: ${e.message}`, "error");
   }
 }
 
 function replaceSlideInBatch(jobId, formData) {
+  const summary = getDefaultJobState().summary;
+  summary.message = "Replacing slides...";
+
   try {
     const replacedFolderId = extractIdFromUrl(formData.replaceTargetFolderUrl);
     const replacingFolderId = extractIdFromUrl(formData.replaceSourceFolderUrl);
@@ -284,8 +417,9 @@ function replaceSlideInBatch(jobId, formData) {
       !replacingFolderId ||
       isNaN(replacedSlideNumber) ||
       isNaN(replacingSlideNumber)
-    )
+    ) {
       throw new Error("Invalid input.");
+    }
 
     const replacedFolder = DriveApp.getFolderById(replacedFolderId);
     const replacingFolder = DriveApp.getFolderById(replacingFolderId);
@@ -294,18 +428,10 @@ function replaceSlideInBatch(jobId, formData) {
       MimeType.GOOGLE_SLIDES,
     );
 
-    updateLog(
-      jobId,
-      `Building map from source folder: ${replacingFolder.getName()}`,
-    );
     while (replacingFilesIterator.hasNext()) {
       const file = replacingFilesIterator.next();
       replacingFilesMap.set(file.getName(), file.getId());
     }
-    updateLog(
-      jobId,
-      `Found ${replacingFilesMap.size} source files. Starting replacements...`,
-    );
 
     const replacedFilesIterator = replacedFolder.getFilesByType(
       MimeType.GOOGLE_SLIDES,
@@ -313,33 +439,56 @@ function replaceSlideInBatch(jobId, formData) {
     while (replacedFilesIterator.hasNext()) {
       const replacedFile = replacedFilesIterator.next();
       const fileName = replacedFile.getName();
-      updateLog(jobId, `Checking target: ${fileName}`);
+      summary.processedFiles++;
+      summary.currentFile = fileName;
 
-      if (replacingFilesMap.has(fileName)) {
-        const destinationPresentation = SlidesApp.openById(
-          replacedFile.getId(),
-        );
-        const sourcePresentation = SlidesApp.openById(
-          replacingFilesMap.get(fileName),
-        );
-        const oldSlide =
-          destinationPresentation.getSlides()[replacedSlideNumber - 1];
-        const newSlide =
-          sourcePresentation.getSlides()[replacingSlideNumber - 1];
+      try {
+        if (replacingFilesMap.has(fileName)) {
+          const destinationPresentation = SlidesApp.openById(
+            replacedFile.getId(),
+          );
+          const sourcePresentation = SlidesApp.openById(
+            replacingFilesMap.get(fileName),
+          );
+          const oldSlide =
+            destinationPresentation.getSlides()[replacedSlideNumber - 1];
+          const newSlide =
+            sourcePresentation.getSlides()[replacingSlideNumber - 1];
 
-        destinationPresentation.insertSlide(replacedSlideNumber - 1, newSlide);
-        oldSlide.remove();
-        updateLog(jobId, `  - SUCCESS: Replaced slide in ${fileName}.`);
-      } else {
-        updateLog(
-          jobId,
-          `  - SKIPPED: No matching source file for ${fileName}.`,
-        );
+          if (!oldSlide || !newSlide) {
+            throw new Error("Requested slide number does not exist.");
+          }
+
+          destinationPresentation.insertSlide(
+            replacedSlideNumber - 1,
+            newSlide,
+          );
+          oldSlide.remove();
+          summary.editedFiles++;
+          summary.totalChanges++;
+        } else {
+          summary.skippedFiles++;
+        }
+
+        updateJobSummary(jobId, summary);
+        Utilities.sleep(100);
+      } catch (fileError) {
+        summary.errorFiles++;
+        summary.errors.push(`${fileName}: ${fileError.message}`);
+        updateLog(jobId, `ERROR in ${fileName}: ${fileError.message}`);
+        updateJobSummary(jobId, summary);
       }
-      Utilities.sleep(100);
     }
-    updateLog(jobId, "Process finished successfully.", "completed");
+
+    finishJob(jobId, summary);
   } catch (e) {
+    summary.errorFiles++;
+    summary.errors.push(e.message);
+    updateJobSummary(
+      jobId,
+      Object.assign({}, summary, { message: `ERROR: ${e.message}` }),
+      "error",
+    );
     updateLog(jobId, `ERROR: ${e.message}`, "error");
   }
 }

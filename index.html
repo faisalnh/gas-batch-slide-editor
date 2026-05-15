@@ -46,8 +46,11 @@
             }
 
             .header img {
-                max-height: 80px;
-                margin-bottom: 1rem;
+                display: block;
+                width: 120px;
+                max-width: 40%;
+                height: auto;
+                margin: 0 auto 1rem;
             }
 
             .header h1 {
@@ -165,18 +168,59 @@
                 color: var(--red);
             }
 
-            #log-output {
-                font-family: "Courier New", Courier, monospace;
-                white-space: pre-wrap;
-                word-wrap: break-word;
-                background: #2b2b2b;
-                color: #f8f8f2;
+            #summary-output {
+                background: #fff;
+                color: var(--text-color);
                 padding: 1rem;
                 border-radius: 8px;
-                max-height: 350px;
-                overflow-y: auto;
-                border: 1px solid #444;
+                border: 1px solid var(--grey-light);
+            }
+
+            .summary-grid {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 12px;
+                margin-top: 1rem;
+            }
+
+            .summary-card {
+                background: var(--off-white);
+                border: 1px solid var(--grey-light);
+                border-radius: 8px;
+                padding: 1rem;
+                text-align: center;
+            }
+
+            .summary-number {
+                display: block;
+                color: var(--maroon-dark);
+                font-size: 1.75rem;
+                font-weight: 700;
+            }
+
+            .summary-label {
+                color: var(--grey-dark);
                 font-size: 0.85rem;
+            }
+
+            .error-list {
+                background: #fff5f5;
+                border: 1px solid #ffcdd2;
+                border-radius: 8px;
+                color: var(--red);
+                margin-top: 1rem;
+                padding: 1rem;
+            }
+
+            .error-list ul {
+                margin: 0.5rem 0 0;
+                padding-left: 1.25rem;
+            }
+
+            .current-file {
+                color: var(--grey-dark);
+                font-size: 0.9rem;
+                margin-top: 0.5rem;
             }
             .loader-container {
                 display: flex;
@@ -212,10 +256,11 @@
     <body>
         <div class="container">
             <div class="header">
-                <!-- IMPORTANT: Replace the src with the direct link to your hosted logo -->
                 <img
-                    src="https://mwslab.org/content/images/2025/02/M.A.D.-Lab-2-.png"
-                    alt="Millennia Logo"
+                    src="https://millenniaws.sch.id/wp-content/uploads/2021/11/Millennia-World-School-Logo-Only.svg"
+                    alt="Millennia World School Logo"
+                    width="120"
+                    height="120"
                 />
                 <h1>Slide Deck Batch Editor</h1>
             </div>
@@ -433,7 +478,7 @@
             <!-- RESULTS AREA -->
             <div id="results-area">
                 <div id="status-message"></div>
-                <pre id="log-output"></pre>
+                <div id="summary-output"></div>
             </div>
         </div>
 
@@ -577,11 +622,20 @@
                     .forEach((btn) => (btn.disabled = true));
                 const resultsArea = document.getElementById("results-area");
                 const statusMessage = document.getElementById("status-message");
-                const logOutput = document.getElementById("log-output");
+                const summaryOutput = document.getElementById("summary-output");
 
                 statusMessage.className = "running";
                 statusMessage.innerHTML = `<div class="loader-container"><span>Processing...</span><div class="dot-loader"></div><div class="dot-loader"></div><div class="dot-loader"></div></div>`;
-                logOutput.textContent = "Waiting for process to start...";
+                renderSummary({
+                    message: "Waiting for process to start...",
+                    processedFiles: 0,
+                    editedFiles: 0,
+                    skippedFiles: 0,
+                    errorFiles: 0,
+                    totalChanges: 0,
+                    currentFile: "",
+                    errors: [],
+                });
                 resultsArea.style.display = "block";
             }
 
@@ -589,9 +643,7 @@
                 pollInterval = setInterval(() => {
                     google.script.run
                         .withSuccessHandler((response) => {
-                            const logOutput =
-                                document.getElementById("log-output");
-                            logOutput.textContent = response.log;
+                            renderSummary(response.summary || {});
 
                             if (
                                 response.status === "completed" ||
@@ -604,13 +656,50 @@
                 }, 1500);
             }
 
+            function renderSummary(summary) {
+                const summaryOutput = document.getElementById("summary-output");
+                const errors = summary.errors || [];
+                const visibleErrors = errors.slice(0, 10);
+                const currentFile = summary.currentFile
+                    ? `<div class="current-file">Current file: ${escapeHtml(summary.currentFile)}</div>`
+                    : "";
+                const errorMarkup = errors.length
+                    ? `<div class="error-list"><strong>Errors (${errors.length})</strong><ul>${visibleErrors.map((error) => `<li>${escapeHtml(error)}</li>`).join("")}</ul>${errors.length > visibleErrors.length ? `<div class="current-file">Showing first ${visibleErrors.length} errors only.</div>` : ""}</div>`
+                    : "";
+
+                summaryOutput.innerHTML = `
+                    <div><strong>${escapeHtml(summary.message || "Processing...")}</strong></div>
+                    ${currentFile}
+                    <div class="summary-grid">
+                        <div class="summary-card"><span class="summary-number">${summary.processedFiles || 0}</span><span class="summary-label">Slides files processed</span></div>
+                        <div class="summary-card"><span class="summary-number">${summary.editedFiles || 0}</span><span class="summary-label">Slides files edited successfully</span></div>
+                        <div class="summary-card"><span class="summary-number">${summary.skippedFiles || 0}</span><span class="summary-label">Slides files skipped</span></div>
+                        <div class="summary-card"><span class="summary-number">${summary.errorFiles || 0}</span><span class="summary-label">Errors</span></div>
+                    </div>
+                    <div class="current-file">Total changes made: ${summary.totalChanges || 0}</div>
+                    ${errorMarkup}
+                `;
+            }
+
+            function escapeHtml(value) {
+                return String(value)
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            }
+
             function handleFinalState(response) {
                 clearInterval(pollInterval);
+                renderSummary(response.summary || {});
                 const statusMessage = document.getElementById("status-message");
                 statusMessage.className = response.status;
                 statusMessage.textContent =
-                    response.status.charAt(0).toUpperCase() +
-                    response.status.slice(1);
+                    response.status === "error"
+                        ? "Completed with Errors"
+                        : response.status.charAt(0).toUpperCase() +
+                          response.status.slice(1);
                 document
                     .querySelectorAll(".run-button")
                     .forEach((btn) => (btn.disabled = false));
