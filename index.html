@@ -290,6 +290,12 @@
                 >
                     Text Replace
                 </button>
+                <button
+                    class="task-btn"
+                    onclick="showForm('file-name-replace-form', this)"
+                >
+                    File Name Replace
+                </button>
             </div>
 
             <!-- FORMS -->
@@ -475,6 +481,46 @@
                 </button>
             </div>
 
+            <div id="file-name-replace-form" class="task-form">
+                <div class="form-group">
+                    <label for="fileNameReplaceFolderUrl"
+                        >Target Folder URL</label
+                    ><input
+                        type="text"
+                        id="fileNameReplaceFolderUrl"
+                        placeholder="Folder with presentations to rename"
+                    />
+                </div>
+                <div class="form-group">
+                    <label for="fileNameFindText">Find Text in File Name</label
+                    ><input
+                        type="text"
+                        id="fileNameFindText"
+                        placeholder="Text to search for in file names"
+                    />
+                </div>
+                <div class="form-group">
+                    <label for="fileNameReplaceWithText">Replace With</label
+                    ><input
+                        type="text"
+                        id="fileNameReplaceWithText"
+                        placeholder="Replacement text; leave blank to remove"
+                    />
+                </div>
+                <div class="form-group">
+                    <label
+                        ><input type="checkbox" id="fileNameMatchCase" /> Match
+                        case</label
+                    >
+                </div>
+                <button
+                    class="run-button"
+                    onclick="runTask('startFileNameReplaceTask')"
+                >
+                    Run File Name Replacement
+                </button>
+            </div>
+
             <!-- RESULTS AREA -->
             <div id="results-area">
                 <div id="status-message"></div>
@@ -565,6 +611,21 @@
                         matchCase: document.getElementById("matchCase").checked,
                     };
                 }
+                if (taskType === "startFileNameReplaceTask") {
+                    return {
+                        fileNameReplaceFolderUrl: document.getElementById(
+                            "fileNameReplaceFolderUrl",
+                        ).value,
+                        fileNameFindText:
+                            document.getElementById("fileNameFindText").value,
+                        fileNameReplaceWithText: document.getElementById(
+                            "fileNameReplaceWithText",
+                        ).value,
+                        fileNameMatchCase:
+                            document.getElementById("fileNameMatchCase")
+                                .checked,
+                    };
+                }
             }
 
             function toggleTextReplaceSlideNumber() {
@@ -577,15 +638,10 @@
 
             function runTask(taskFunction) {
                 const formData = getFormData(taskFunction);
-                if (
-                    Object.values(formData).some(
-                        (val) =>
-                            val === "" || val === null || val === undefined,
-                    )
-                ) {
+                if (hasMissingRequiredFields(taskFunction, formData)) {
                     if (
                         !confirm(
-                            "One or more fields are empty. Continue anyway?",
+                            "One or more required fields are empty. Continue anyway?",
                         )
                     ) {
                         return;
@@ -614,6 +670,41 @@
                         });
                     })
                     [taskFunction](formData);
+            }
+
+            function hasMissingRequiredFields(taskFunction, formData) {
+                const requiredFieldsByTask = {
+                    startDeleteTask: [
+                        "deleteFolderUrl",
+                        "startSlide",
+                        "endSlide",
+                    ],
+                    startInsertTask: [
+                        "insertSourceUrl",
+                        "insertSourceStart",
+                        "insertSourceEnd",
+                        "insertDestFolderUrl",
+                    ],
+                    startReplaceTask: [
+                        "replaceTargetFolderUrl",
+                        "replaceSourceFolderUrl",
+                        "replaceTargetSlideNum",
+                        "replaceSourceSlideNum",
+                    ],
+                    startTextReplaceTask: ["textReplaceFolderUrl", "findText"],
+                    startFileNameReplaceTask: [
+                        "fileNameReplaceFolderUrl",
+                        "fileNameFindText",
+                    ],
+                };
+                const requiredFields = requiredFieldsByTask[taskFunction] || [];
+
+                return requiredFields.some(
+                    (field) =>
+                        formData[field] === "" ||
+                        formData[field] === null ||
+                        formData[field] === undefined,
+                );
             }
 
             function setUILoading() {

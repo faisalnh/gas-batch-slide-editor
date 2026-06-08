@@ -150,6 +150,14 @@ function startTextReplaceTask(formData) {
   return { jobId: jobId };
 }
 
+function startFileNameReplaceTask(formData) {
+  const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  updateLog(jobId, "Job initiated: File Name Replace");
+  updateJobSummary(jobId, { message: "Replacing file names..." });
+  replaceFileNamesInFolder(jobId, formData);
+  return { jobId: jobId };
+}
+
 // --- CORE LOGIC FUNCTIONS ---
 
 function deleteSlidesInFolder(jobId, formData) {
@@ -385,6 +393,73 @@ function replaceTextInFolder(jobId, formData) {
         summary.errorFiles++;
         summary.errors.push(`${file.getName()}: ${fileError.message}`);
         updateLog(jobId, `ERROR in ${file.getName()}: ${fileError.message}`);
+        updateJobSummary(jobId, summary);
+      }
+    }
+
+    finishJob(jobId, summary);
+  } catch (e) {
+    summary.errorFiles++;
+    summary.errors.push(e.message);
+    updateJobSummary(
+      jobId,
+      Object.assign({}, summary, { message: `ERROR: ${e.message}` }),
+      "error",
+    );
+    updateLog(jobId, `ERROR: ${e.message}`, "error");
+  }
+}
+
+function replaceFileNamesInFolder(jobId, formData) {
+  const summary = getDefaultJobState().summary;
+  summary.message = "Replacing file names...";
+
+  try {
+    const folderId = extractIdFromUrl(formData.fileNameReplaceFolderUrl);
+    const findText = formData.fileNameFindText;
+    const replaceWithText = formData.fileNameReplaceWithText || "";
+    const matchCase =
+      formData.fileNameMatchCase === true ||
+      formData.fileNameMatchCase === "true";
+
+    if (!folderId || !findText) {
+      throw new Error("Folder URL and file name find text are required.");
+    }
+
+    const folder = DriveApp.getFolderById(folderId);
+    const files = folder.getFilesByType(MimeType.GOOGLE_SLIDES);
+    const escapedFindText = findText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const searchPattern = new RegExp(escapedFindText, matchCase ? "g" : "gi");
+
+    updateLog(
+      jobId,
+      `Starting file name replacement in folder: ${folder.getName()}`,
+    );
+
+    while (files.hasNext()) {
+      const file = files.next();
+      const originalName = file.getName();
+      summary.processedFiles++;
+      summary.currentFile = originalName;
+
+      try {
+        const newName = originalName.replace(searchPattern, replaceWithText);
+
+        if (newName !== originalName) {
+          file.setName(newName);
+          summary.editedFiles++;
+          summary.totalChanges++;
+          updateLog(jobId, `Renamed ${originalName} to ${newName}`);
+        } else {
+          summary.skippedFiles++;
+        }
+
+        updateJobSummary(jobId, summary);
+        Utilities.sleep(100);
+      } catch (fileError) {
+        summary.errorFiles++;
+        summary.errors.push(`${originalName}: ${fileError.message}`);
+        updateLog(jobId, `ERROR in ${originalName}: ${fileError.message}`);
         updateJobSummary(jobId, summary);
       }
     }
